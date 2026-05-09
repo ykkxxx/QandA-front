@@ -15,7 +15,7 @@
               round
               width="60"
               height="60"
-              :src="userInfo?.avatar ? `http://localhost:8001${userInfo.avatar}` : 'https://fastly.jsdelivr.net/npm/@vant/assets/cat.jpeg'"
+              :src="resolveAvatarUrl(userInfo?.avatar)"
             />
           </template>
         </van-cell>
@@ -46,6 +46,7 @@ import { showDialog, showToast, showLoadingToast, showSuccessToast, showFailToas
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { apiConfig } from '../config/api';
+import { resolveAvatarUrl } from '../utils/resolveAvatarUrl';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -111,8 +112,11 @@ const genderText = computed(() => {
 });
 
 const createTimeText = computed(() => {
-  if (!userInfo.value?.create_time) return '未设置';
-  const date = new Date(userInfo.value?.create_time);
+  const raw =
+    userInfo.value?.date_joined ?? userInfo.value?.create_time;
+  if (!raw) return '未设置';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '未设置';
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -199,13 +203,19 @@ const showPasswordConfirm = () => {
       });
       
       // 调用API更新密码
-      const result = await userStore.updatePassword(oldPassword.value, newPassword.value);
+      const result = await userStore.updatePassword(
+        oldPassword.value,
+        newPassword.value,
+        confirmPassword.value
+      );
       
       // 关闭加载提示
       loadingInstance.close();
       
       if (result && result.success) {
-        showSuccessToast('密码修改成功');
+        showSuccessToast('密码修改成功，请重新登录');
+        await userStore.logout();
+        router.replace('/login');
       } else {
         showFailToast((result && result.message) || '密码修改失败');
       }
@@ -541,7 +551,7 @@ const showPhoneDialog = () => {
 const showAvatarDialog = () => {
   // 使用ref创建响应式变量
   const selectedFile = ref(null);
-  const previewUrl = ref(userInfo.value?.avatar ? `http://localhost:8001${userInfo.value.avatar}` : 'https://fastly.jsdelivr.net/npm/@vant/assets/cat.jpeg');
+  const previewUrl = ref(resolveAvatarUrl(userInfo.value?.avatar));
   
   showDialog({
     title: '修改头像',
@@ -640,6 +650,11 @@ const showAvatarDialog = () => {
 .info-group,
 .security-group {
   margin-top: 12px;
+}
+
+/* 个人信息右侧内容：Vant 默认灰色，改为黑色 */
+.profile-page :deep(.van-cell__value) {
+  color: #000;
 }
 
 .password-dialog .van-dialog__content {

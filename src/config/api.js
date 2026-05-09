@@ -6,17 +6,21 @@
 // API基础URL配置
 export const apiConfig = {
   // 后端API基础URL（使用相对路径，通过Vite代理访问）
-  baseURL: import.meta.env.VITE_BASE_URL || '',
+  baseURL: '',
   // 用户服务基础URL（使用相对路径，通过Vite代理访问）
-  userBaseURL: import.meta.env.VITE_USER_BASE_URL || '',
+  userBaseURL:  '/api',//'http://127.0.0.1:8123'
   
   // API端点配置
   endpoints: {
     // 认证相关
-    login: '/user/login/',
-    logout: '/user/logout/',
-    register: '/user/register/',
-    profile: '/user/detail/',
+    login: '/api/user/login',
+    logout: '/api/user/logout/',
+    register: '/api/user/register',
+    profile: '/api/user/info',
+    updateProfile: '/api/user/update',
+    resetPassword: '/api/user/reset-pwd',
+    refreshToken: '/api/user/refresh-token',
+    changePassword: '/api/user/reset-pwd',
     
     // 文件上传
     uploadFile: '/file/upload/',

@@ -11,6 +11,69 @@ const getCsrfToken = () => {
   return cookieValue || '';
 };
 
+/** 用户服务统一响应：成功为 code === 0，负载多在 data 内 */
+const parseUserServiceResponse = (response) => {
+  const body = response?.data ?? {};
+  const ok = body.code === 0;
+  const payload = body.data !== undefined ? body.data : body;
+  const token = payload?.token ?? payload?.access_token ?? body.token;
+  const userInfo = payload?.user ?? payload?.user_info ?? body.user;
+  const message = body.message ?? body.msg ?? payload?.message;
+  return { ok, body, payload, token, userInfo, message };
+};
+
+/** 写操作：HTTP 2xx 且（无 code 字段 或 code===0）为成功 */
+const interpretUserWriteResponse = (response) => {
+  const status = response?.status ?? 0;
+  if (status < 200 || status >= 300) {
+    return { success: false, message: '' };
+  }
+  const body = response?.data;
+  if (
+    body != null &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, 'code')
+  ) {
+    if (body.code !== 0) {
+      return {
+        success: false,
+        message: body.message || body.msg || '操作失败'
+      };
+    }
+  }
+  const msg =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? body.message || body.msg
+      : undefined;
+  return {
+    success: true,
+    message: msg || '操作成功'
+  };
+};
+
+const extractAxiosErrorMessage = (error) => {
+  const d = error.response?.data;
+  if (!d) return error.message || '请求失败，请稍后再试';
+  if (typeof d.message === 'string') return d.message;
+  if (typeof d.msg === 'string') return d.msg;
+  if (typeof d.detail === 'string') return d.detail;
+  const det = d.detail;
+  if (Array.isArray(det) && det.length) {
+    const x = det[0];
+    if (typeof x === 'string') return x;
+  }
+  if (det && typeof det === 'object' && !Array.isArray(det)) {
+    const k = Object.keys(det)[0];
+    if (k) {
+      const v = det[k];
+      if (typeof v === 'string') return v;
+      if (Array.isArray(v) && v.length) return String(v[0]);
+    }
+  }
+  return '请求失败，请稍后再试';
+};
+
 export const useUserStore = defineStore('user', {
   state: () => ({
     userInfo: null,
@@ -33,41 +96,34 @@ export const useUserStore = defineStore('user', {
         const response = await axios.post(apiConfig.endpoints.login, {
           username: userData.username,
           password: userData.password
-        }, {
-          headers: {
-            'X-CSRFTOKEN': getCsrfToken()
-          }
         });
-        
-        // 检查响应状态
-        if (response.status === 200) {
-          // 登录成功
-          const userInfo = response.data.user;
-          // 存储token
-          const token = response.data.token;
-          // 将token存入到localStorage
+        console.log('response', response);
+        const { ok, token, userInfo, message } = parseUserServiceResponse(response);
+        if (ok && token) {
           localStorage.setItem('jwt_token', token);
-          
-          this.userInfo = userInfo;
+          this.userInfo = userInfo ?? null;
           this.token = token;
           this.isLogin = true;
-          
           return {
             success: true,
-            message: response.data.message
-          };
-        } else {
-          // 登录失败
-          return {
-            success: false,
-            message: response.data.detail || '登录失败'
+            message: message || '登录成功'
           };
         }
-      } catch (error) {
-        console.error('登录请求失败:', error);
         return {
           success: false,
-          message: error.response?.data?.detail?.non_field_errors?.[0] || '登录请求失败，请稍后再试'
+          message: message || response.data?.detail || '登录失败'
+        };
+      } catch (error) {
+        console.error('登录请求失败:', error);
+        const d = error.response?.data;
+        return {
+          success: false,
+          message:
+            d?.message ||
+            d?.msg ||
+            d?.detail?.non_field_errors?.[0] ||
+            (typeof d?.detail === 'string' ? d.detail : null) ||
+            '登录请求失败，请稍后再试'
         };
       }
     },
@@ -157,7 +213,7 @@ export const useUserStore = defineStore('user', {
         
         // 发送更新用户信息请求
         console.log('更新用户信息请求参数:', userData);
-        const response = await axios.put('/user/update/', userData, {
+        const response = await axios.put(apiConfig.endpoints.updateProfile, userData, {
           headers: {
             Authorization: `Bearer ${token}`,
             'X-CSRFTOKEN': getCsrfToken(),
@@ -197,8 +253,8 @@ export const useUserStore = defineStore('user', {
       }
     },
     
-    // 更新密码
-    async updatePassword(oldPassword, newPassword) {
+    // 更新密码（后端：POST reset-pwd，@RequestParam + form-urlencoded）
+    async updatePassword(oldPassword, newPassword, confirmPassword) {
       try {
         // 从localStorage获取token
         const token = localStorage.getItem('jwt_token') || this.token;
@@ -209,36 +265,35 @@ export const useUserStore = defineStore('user', {
             message: '未登录'
           };
         }
-        
-        // 发送更新密码请求
-        const response = await axios.post('/user/change_password/', {
-          old_password: oldPassword,
-          new_password: newPassword
-        }, {
+
+        const body = new URLSearchParams();
+        body.set('oldPassword', oldPassword);
+        body.set('newPassword', newPassword);
+        body.set('confirm_password', confirmPassword ?? newPassword);
+
+        const response = await axios.post(apiConfig.endpoints.changePassword, body, {
           headers: {
             Authorization: `Bearer ${token}`,
-            'X-CSRFTOKEN': getCsrfToken(),
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/x-www-form-urlencoded'
           }
         });
-        
-        // 检查响应状态
-        if (response.status === 200) {
+
+        const interpreted = interpretUserWriteResponse(response);
+        if (interpreted.success) {
           return {
             success: true,
-            message: response.data.message
-          };
-        } else {
-          return {
-            success: false,
-            message: response.data.detail || '更新密码失败'
+            message: interpreted.message
           };
         }
+        return {
+          success: false,
+          message: interpreted.message || '更新密码失败'
+        };
       } catch (error) {
         console.error('更新密码请求失败:', error);
         return {
           success: false,
-          message: error.response?.data?.detail || '更新密码请求失败，请稍后再试'
+          message: extractAxiosErrorMessage(error)
         };
       }
     },
@@ -248,9 +303,9 @@ export const useUserStore = defineStore('user', {
       try {
         console.log('=== 开始注册请求 ===');
         console.log('请求数据:', userData);
-        
+
         // 发送注册请求到用户服务
-        const response = await axios.post('/user/register/', {
+        const response = await axios.post(apiConfig.endpoints.register, {
           username: userData.username,
           email: userData.email,
           telephone: userData.telephone || '',
@@ -262,51 +317,38 @@ export const useUserStore = defineStore('user', {
             'Content-Type': 'application/json'
           }
         });
-        
+
         console.log('=== 注册响应 ===');
         console.log('响应状态码:', response.status);
         console.log('响应数据:', response.data);
-        
-        // 根据后端返回的数据格式判断注册是否成功
-        // 后端返回格式: { status: 201, message: "注册成功", user: {...}, token: "..." }
-        if (response.data.status === 201 && response.data.token) {
-          // 注册成功
-          const token = response.data.token;
-          const userInfo = response.data.user;
-          
-          // 保存token到localStorage
+
+        const { ok, token, userInfo, message } = parseUserServiceResponse(response);
+        if (ok && token) {
           localStorage.setItem('jwt_token', token);
-          
-          // 更新store状态
-          this.userInfo = userInfo;
+          this.userInfo = userInfo ?? null;
           this.token = token;
           this.isLogin = true;
-          
           console.log('注册成功，已保存用户信息和token');
           return {
             success: true,
-            message: response.data.message || '注册成功'
-          };
-        } else {
-          // 注册失败
-          console.log('注册失败:', response.data.message || '未知错误');
-          return {
-            success: false,
-            message: response.data.message || '注册失败'
+            message: message || '注册成功'
           };
         }
+        console.log('注册失败:', message || '未知错误');
+        return {
+          success: false,
+          message: message || '注册失败'
+        };
       } catch (error) {
         console.error('=== 注册请求异常 ===');
         console.error('错误:', error);
-        
-        // 处理错误响应
+
+        const d = error.response?.data;
         let errorMessage = '注册失败，请稍后重试';
-        if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
-        } else if (error.response?.data?.detail) {
-          errorMessage = error.response.data.detail;
-        }
-        
+        if (d?.message) errorMessage = d.message;
+        else if (d?.msg) errorMessage = d.msg;
+        else if (typeof d?.detail === 'string') errorMessage = d.detail;
+
         return {
           success: false,
           message: errorMessage

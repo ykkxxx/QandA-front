@@ -7,7 +7,7 @@
           round
           width="80"
           height="80"
-          :src="userInfo && userInfo.avatar ? `http://localhost:8001${userInfo.avatar}` : 'https://fastly.jsdelivr.net/npm/@vant/assets/cat.jpeg'"
+          :src="resolveAvatarUrl(userInfo?.avatar)"
         />
       </div>
       <div class="info">
@@ -53,6 +53,7 @@ import { computed, ref } from 'vue';
 import { showDialog, showToast } from 'vant';
 import TabBar from '../components/TabBar.vue';
 import { useI18n } from 'vue-i18n';
+import { resolveAvatarUrl } from '../utils/resolveAvatarUrl';
 
 const userStore = useUserStore();
 const router = useRouter();
@@ -162,7 +163,7 @@ onMounted(async () => {
 
 .desc {
   font-size: 14px;
-  color: #999;
+  color: #000;
 }
 
 .menu-list {
