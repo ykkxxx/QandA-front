@@ -7,7 +7,9 @@
           round
           width="80"
           height="80"
+          :key="userInfo?.avatar || 'avatar'"
           :src="resolveAvatarUrl(userInfo?.avatar)"
+          @error="onUserAvatarError"
         />
       </div>
       <div class="info">
@@ -53,7 +55,14 @@ import { computed, ref } from 'vue';
 import { showDialog, showToast } from 'vant';
 import TabBar from '../components/TabBar.vue';
 import { useI18n } from 'vue-i18n';
-import { resolveAvatarUrl } from '../utils/resolveAvatarUrl';
+import { resolveAvatarUrl, DEFAULT_AVATAR } from '../utils/resolveAvatarUrl';
+
+const onUserAvatarError = (e) => {
+  const el = e?.target;
+  if (el && el.tagName === 'IMG') {
+    el.src = DEFAULT_AVATAR;
+  }
+};
 
 const userStore = useUserStore();
 const router = useRouter();
@@ -102,8 +111,9 @@ const handleLogout = () => {
   });
 };
 
-// 获取用户信息
+// 已登录才请求 /api/user/info（与 store 内无 token 不发请求一致，避免无意义调用）
 onMounted(async () => {
+  if (!userStore.getLoginStatus) return;
   try {
     await userStore.getUserInfoDetail();
   } catch (error) {

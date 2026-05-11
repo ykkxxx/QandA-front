@@ -64,6 +64,7 @@ import 'highlight.js/lib/common';
 import { apiConfig } from '../config/api';
 import { useUserStore } from '../store/user';
 import { useSessionStore } from '../store/session';
+import { bearerAuthHeaders } from '../utils/authToken';
 
 // 从cookie中获取CSRF token
 const getCsrfToken = () => {
@@ -161,14 +162,11 @@ const fetchAIResponse = async (userMessage) => {
     const url = '/api/agent/query/stream';
     // 从localStorage获取token
     const token = localStorage.getItem('jwt_token') || userStore.token;
-    // console.log('发送AI请求到:', url);
-    // console.log('使用的token:', token);
-    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        ...bearerAuthHeaders(token)
       },
       body: JSON.stringify({
         session_id: sessionId.value || undefined,

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 import { apiConfig } from '../config/api';
+import { bearerAuthHeaders } from '../utils/authToken';
 
 export const useSessionStore = defineStore('session', {
   state: () => ({
@@ -21,10 +22,9 @@ export const useSessionStore = defineStore('session', {
       try {
         this.loading = true;
         const token = localStorage.getItem('jwt_token');
-        
         const response = await axios.get(`${apiConfig.endpoints.getUserSessions}/${userId}`, {
           headers: {
-            Authorization: `Bearer ${token}`
+            ...bearerAuthHeaders(token)
           }
         });
         
@@ -67,10 +67,9 @@ export const useSessionStore = defineStore('session', {
       try {
         this.loading = true;
         const token = localStorage.getItem('jwt_token');
-        
         const response = await axios.get(`${apiConfig.endpoints.getSession}${sessionId}`, {
           headers: {
-            Authorization: `Bearer ${token}`
+            ...bearerAuthHeaders(token)
           }
         });
         
@@ -97,10 +96,9 @@ export const useSessionStore = defineStore('session', {
       try {
         this.loading = true;
         const token = localStorage.getItem('jwt_token');
-        
         await axios.delete(`${apiConfig.endpoints.deleteSession}${sessionId}`, {
           headers: {
-            Authorization: `Bearer ${token}`
+            ...bearerAuthHeaders(token)
           }
         });
         
@@ -137,13 +135,12 @@ export const useSessionStore = defineStore('session', {
       try {
         this.loading = true;
         const token = localStorage.getItem('jwt_token');
-        
         // 发送第一个消息来创建会话
         const response = await fetch(apiConfig.endpoints.agentQueryStream, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            ...bearerAuthHeaders(token)
           },
           body: JSON.stringify({
             query: query

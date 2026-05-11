@@ -15,7 +15,9 @@
               round
               width="60"
               height="60"
+              :key="userInfo?.avatar || 'avatar'"
               :src="resolveAvatarUrl(userInfo?.avatar)"
+              @error="onAvatarImgError"
             />
           </template>
         </van-cell>
@@ -36,17 +38,73 @@
         <van-cell title="修改密码" is-link @click="showPasswordConfirm" />
       </van-cell-group>
     </div>
+
+    <van-popup
+      v-model:show="genderSheetVisible"
+      position="bottom"
+      round
+      :style="{ width: '100%' }"
+    >
+      <div style="text-align: center; font-weight: 600; padding: 12px 0 4px">选择性别</div>
+      <van-radio-group v-model="genderPickValue">
+        <van-cell title="男" clickable @click="genderPickValue = 1">
+          <template #right-icon><van-radio :name="1" /></template>
+        </van-cell>
+        <van-cell title="女" clickable @click="genderPickValue = 2">
+          <template #right-icon><van-radio :name="2" /></template>
+        </van-cell>
+        <van-cell title="未知" clickable @click="genderPickValue = 0">
+          <template #right-icon><van-radio :name="0" /></template>
+        </van-cell>
+      </van-radio-group>
+      <div style="padding: 16px">
+        <van-button type="primary" block round @click="confirmGenderSheet">确定</van-button>
+      </div>
+    </van-popup>
+
+    <van-popup
+      v-model:show="avatarPopupVisible"
+      position="bottom"
+      round
+      :style="{ width: '100%' }"
+      @closed="onAvatarPopupClosed"
+    >
+      <div style="text-align: center; font-weight: 600; padding: 12px 0 4px">修改头像</div>
+      <div style="text-align: center; padding: 16px">
+        <van-image
+          round
+          width="100"
+          height="100"
+          :key="avatarDisplaySrc"
+          :src="avatarDisplaySrc"
+          @error="onAvatarImgError"
+        />
+      </div>
+      <div style="padding: 0 16px 16px">
+        <input
+          type="file"
+          accept="image/*"
+          class="avatar-file-input"
+          @change="onAvatarFileSelected"
+        />
+        <p style="margin: 8px 0 0; font-size: 12px; color: #969799">请选择本地图片，建议使用正方形</p>
+      </div>
+      <div style="padding: 16px; display: flex; gap: 8px">
+        <van-button block round @click="avatarPopupVisible = false">取消</van-button>
+        <van-button type="primary" block round :loading="avatarUploading" @click="confirmAvatarUpload">
+          确认上传
+        </van-button>
+      </div>
+    </van-popup>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, h, onMounted } from 'vue';
 import { useUserStore } from '../store/user';
-import { showDialog, showToast, showLoadingToast, showSuccessToast, showFailToast, Dialog, RadioGroup, Radio } from 'vant';
+import { showDialog, showToast, showLoadingToast, showSuccessToast, showFailToast } from 'vant';
 import { useRouter } from 'vue-router';
-import axios from 'axios';
-import { apiConfig } from '../config/api';
-import { resolveAvatarUrl } from '../utils/resolveAvatarUrl';
+import { resolveAvatarUrl, DEFAULT_AVATAR } from '../utils/resolveAvatarUrl';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -68,14 +126,8 @@ onMounted(async () => {
       duration: 0
     });
     
-    console.log('获取用户信息，当前token:', userStore.token);
-    
-    // 使用新的 getUserInfoDetail 方法
     const result = await userStore.getUserInfoDetail();
-    
-    console.log('获取用户信息结果:', result);
-    console.log('当前用户信息:', userStore.userInfo);
-    
+
     // 手动关闭加载提示
     loadingInstance.close();
     
@@ -97,17 +149,23 @@ const userInfo = computed(() => userStore.userInfo);
 const userId = computed(() => userStore.token ? userStore.token.substring(0, 5) : '');
 const userBio = computed(() => userStore.userInfo?.bio || '暂无简介');
 
+/** 与后端 UsersUpdateDTO 一致：0-未知 1-男 2-女（历史非法值如 3 按未知处理） */
+const normalizeProfileGender = (g) => {
+  const n = Number(g);
+  if (n === 1 || n === 2) return n;
+  return 0;
+};
+
 const genderText = computed(() => {
-  const gender = userInfo.value?.gender;
-  switch (gender) {
+  const g = normalizeProfileGender(userInfo.value?.gender);
+  switch (g) {
     case 1:
       return '男';
     case 2:
       return '女';
-    case 3:
-      return '其他';
+    case 0:
     default:
-      return '其他';
+      return '未知';
   }
 });
 
@@ -263,7 +321,7 @@ const showBioDialog = () => {
         username: userInfo.value?.username || '',
         email: userInfo.value?.email || '',
         telephone: userInfo.value?.telephone || '',
-        gender: userInfo.value?.gender || 3,
+        gender: normalizeProfileGender(userInfo.value?.gender),
         bio: newBioValue.value
       });
       
@@ -285,97 +343,86 @@ const showBioDialog = () => {
   });
 };
 
+const genderSheetVisible = ref(false);
+const genderPickValue = ref(0);
+
+/** 头像弹层（避免 showDialog + h(VNode) 触发 VanDialog message 类型告警） */
+const avatarPopupVisible = ref(false);
+const avatarBlobUrl = ref('');
+const avatarSelectedFile = ref(null);
+const avatarUploading = ref(false);
+
+const avatarDisplaySrc = computed(() => {
+  if (avatarBlobUrl.value) return avatarBlobUrl.value;
+  return resolveAvatarUrl(userInfo.value?.avatar);
+});
+
+const revokeAvatarBlob = () => {
+  if (avatarBlobUrl.value && avatarBlobUrl.value.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(avatarBlobUrl.value);
+    } catch {
+      /* ignore */
+    }
+  }
+  avatarBlobUrl.value = '';
+};
+
+const onAvatarPopupClosed = () => {
+  revokeAvatarBlob();
+  avatarSelectedFile.value = null;
+  avatarUploading.value = false;
+};
+
+/** 头像 URL 无效时回退占位，避免白块 */
+const onAvatarImgError = (e) => {
+  const el = e?.target;
+  if (el && el.tagName === 'IMG') {
+    el.src = DEFAULT_AVATAR;
+  }
+};
+
+const onAvatarFileSelected = (e) => {
+  const file = e.target?.files?.[0];
+  if (!file) return;
+  revokeAvatarBlob();
+  avatarSelectedFile.value = file;
+  avatarBlobUrl.value = URL.createObjectURL(file);
+  e.target.value = '';
+};
+
 const showGenderDialog = () => {
-  // 使用ref创建响应式变量
-  const selectedGender = ref(userInfo.value?.gender || 3);
-  
-  // 使用Vant的Dialog组件显示性别选择
-  showDialog({
-    title: '选择性别',
-    message: h('div', { 
-      style: 'padding: 10px; text-align: left;'
-    }, [
-      h('div', { style: 'margin-bottom: 15px;' }, [
-        h('input', {
-          type: 'radio',
-          name: 'gender',
-          value: 1,
-          checked: selectedGender.value === 1,
-          style: 'margin-right: 8px;',
-          onChange: (e) => selectedGender.value = parseInt(e.target.value)
-        }),
-        h('label', { 
-          style: 'cursor: pointer; margin-right: 20px;' 
-        }, '男')
-      ]),
-      h('div', { style: 'margin-bottom: 15px;' }, [
-        h('input', {
-          type: 'radio',
-          name: 'gender',
-          value: 2,
-          checked: selectedGender.value === 2,
-          style: 'margin-right: 8px;',
-          onChange: (e) => selectedGender.value = parseInt(e.target.value)
-        }),
-        h('label', { 
-          style: 'cursor: pointer; margin-right: 20px;' 
-        }, '女')
-      ]),
-      h('div', { style: 'margin-bottom: 15px;' }, [
-        h('input', {
-          type: 'radio',
-          name: 'gender',
-          value: 3,
-          checked: selectedGender.value === 3,
-          style: 'margin-right: 8px;',
-          onChange: (e) => selectedGender.value = parseInt(e.target.value)
-        }),
-        h('label', { 
-          style: 'cursor: pointer;' 
-        }, '其他')
-      ])
-    ]),
-    confirmButtonText: '确认',
-    cancelButtonText: '取消',
-    showCancelButton: true
-  }).then(() => {
-    // 点击确认按钮
-    // 显示加载提示
-    const loadingInstance = showLoadingToast({
-      message: '保存中...',
-      forbidClick: true,
-      duration: 0
-    });
-    
-    // 调用API更新性别
-    userStore.updateUserInfo({ 
+  genderPickValue.value = normalizeProfileGender(userInfo.value?.gender);
+  genderSheetVisible.value = true;
+};
+
+const confirmGenderSheet = async () => {
+  const loadingInstance = showLoadingToast({
+    message: '保存中...',
+    forbidClick: true,
+    duration: 0
+  });
+  try {
+    const result = await userStore.updateUserInfo({
       username: userInfo.value?.username || '',
       email: userInfo.value?.email || '',
       telephone: userInfo.value?.telephone || '',
-      gender: selectedGender.value,
+      gender: Number(genderPickValue.value),
       bio: userInfo.value?.bio || ''
-    })
-      .then((result) => {
-        // 关闭加载提示
-        loadingInstance.close();
-        
-        if (result && result.success) {
-          showSuccessToast('性别修改成功');
-        } else {
-          showFailToast((result && result.message) || '性别修改失败');
-        }
-      })
-      .catch((error) => {
-        console.error('更新性别失败:', error);
-        loadingInstance.close();
-        showToast.fail('性别修改失败');
-      });
-  }).catch(() => {
-    // 点击取消按钮
-  });
+    });
+    loadingInstance.close();
+    genderSheetVisible.value = false;
+    if (result && result.success) {
+      showSuccessToast('性别修改成功');
+    } else {
+      showFailToast((result && result.message) || '性别修改失败');
+    }
+  } catch (error) {
+    console.error('更新性别失败:', error);
+    loadingInstance.close();
+    showToast.fail('性别修改失败');
+  }
 };
-
-
 
 const showUsernameDialog = () => {
   // 使用ref创建响应式变量
@@ -412,7 +459,7 @@ const showUsernameDialog = () => {
         username: newUsernameValue.value,
         email: userInfo.value?.email || '',
         telephone: userInfo.value?.telephone || '',
-        gender: userInfo.value?.gender || 3,
+        gender: normalizeProfileGender(userInfo.value?.gender),
         bio: userInfo.value?.bio || ''
       });
       
@@ -469,7 +516,7 @@ const showEmailDialog = () => {
         username: userInfo.value?.username || '',
         email: newEmailValue.value,
         telephone: userInfo.value?.telephone || '',
-        gender: userInfo.value?.gender || 3,
+        gender: normalizeProfileGender(userInfo.value?.gender),
         bio: userInfo.value?.bio || ''
       });
       
@@ -526,7 +573,7 @@ const showPhoneDialog = () => {
         username: userInfo.value?.username || '',
         email: userInfo.value?.email || '',
         telephone: newPhoneValue.value,
-        gender: userInfo.value?.gender || 3,
+        gender: normalizeProfileGender(userInfo.value?.gender),
         bio: userInfo.value?.bio || ''
       });
       
@@ -549,89 +596,62 @@ const showPhoneDialog = () => {
 };
 
 const showAvatarDialog = () => {
-  // 使用ref创建响应式变量
-  const selectedFile = ref(null);
-  const previewUrl = ref(resolveAvatarUrl(userInfo.value?.avatar));
-  
-  showDialog({
-    title: '修改头像',
-    showCancelButton: true,
-    confirmButtonText: '确认上传',
-    className: 'avatar-dialog',
-    message: h('div', { style: 'text-align: left; padding: 10px 0;' }, [
-      h('div', { style: 'margin-bottom: 15px; text-align: center;' }, [
-        h('van-image', {
-          props: {
-            round: true,
-            width: 100,
-            height: 100,
-            src: previewUrl.value
-          },
-          style: 'margin-bottom: 10px;'
-        })
-      ]),
-      h('div', { style: 'margin-bottom: 15px;' }, [
-        h('input', {
-          type: 'file',
-          accept: 'image/*',
-          onInput: (e) => {
-            const file = e.target.files[0];
-            if (file) {
-              selectedFile.value = file;
-              // 生成预览URL
-              previewUrl.value = URL.createObjectURL(file);
-            }
-          },
-          style: 'width: 100%; padding: 8px; box-sizing: border-box; cursor: pointer;'
-        })
-      ]),
-      h('div', { style: 'margin-bottom: 15px; font-size: 12px; color: #999;' }, '请选择本地图片文件，建议使用正方形图片')
-    ])
-  }).then(async () => {
-    // 点击确认按钮
-    if (!selectedFile.value) {
-      showToast('请选择要上传的图片');
-      return;
-    }
-    
-    try {
-      // 显示加载提示
-      const loadingInstance = showLoadingToast({
-        message: '上传中...',
-        forbidClick: true,
-        duration: 0
-      });
-      
-      // 创建FormData对象
-      const formData = new FormData();
-      formData.append('img', selectedFile.value);
-      
-      // 发送上传请求
-      const response = await axios.post(`${apiConfig.userBaseURL}${apiConfig.endpoints.uploadFile}`, formData, {
-        headers: {
-          'Authorization': `Bearer ${userStore.token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      
-      // 关闭加载提示
-      loadingInstance.close();
-      
-      if (response.data && response.data.success) {
-        // 更新用户信息
-        await userStore.getUserInfoDetail();
-        showSuccessToast('头像上传成功');
-      } else {
-        showFailToast((response.data && response.data.message) || '头像上传失败');
-      }
-    } catch (error) {
-      console.error('上传头像失败:', error);
-      showToast.clear();
-      showToast.fail('头像上传失败');
-    }
-  }).catch(() => {
-    // 点击取消按钮
+  revokeAvatarBlob();
+  avatarSelectedFile.value = null;
+  avatarPopupVisible.value = true;
+};
+
+const confirmAvatarUpload = async () => {
+  if (!avatarSelectedFile.value) {
+    showToast('请选择要上传的图片');
+    return;
+  }
+
+  avatarUploading.value = true;
+  const loadingInstance = showLoadingToast({
+    message: '上传中...',
+    forbidClick: true,
+    duration: 0
   });
+
+  try {
+    const result = await userStore.updateUserInfo(
+      {
+        username: userInfo.value?.username || '',
+        email: userInfo.value?.email || '',
+        telephone: userInfo.value?.telephone || '',
+        gender: normalizeProfileGender(userInfo.value?.gender),
+        bio: userInfo.value?.bio || ''
+      },
+      { avatarFile: avatarSelectedFile.value }
+    );
+
+    loadingInstance.close();
+
+    if (result && result.success) {
+      await userStore.getUserInfoDetail();
+      showSuccessToast('头像更新成功');
+      avatarPopupVisible.value = false;
+    } else {
+      showFailToast((result && result.message) || '头像更新失败');
+    }
+  } catch (error) {
+    console.error('上传头像失败:', error);
+    loadingInstance.close();
+    showToast.fail(extractUploadErrorMessage(error));
+  } finally {
+    avatarUploading.value = false;
+  }
+};
+
+const extractUploadErrorMessage = (error) => {
+  const d = error.response?.data;
+  if (d && typeof d === 'object') {
+    if (typeof d.message === 'string') return d.message;
+    if (typeof d.msg === 'string') return d.msg;
+    if (typeof d.error === 'string') return d.error;
+  }
+  return error.message || '头像上传失败';
 };
 </script>
 
@@ -679,5 +699,12 @@ const showAvatarDialog = () => {
   padding: 8px;
   outline: none;
   box-sizing: border-box;
+}
+
+.avatar-file-input {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  cursor: pointer;
 }
 </style>

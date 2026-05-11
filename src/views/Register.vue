@@ -22,7 +22,7 @@
         <van-cell-group inset>
           <van-field
             v-model="form.username"
-            placeholder="请输入用户名"
+            placeholder="3-20 位字母数字下划线"
             :rules="usernameRules"
             required
             left-icon="user-o"
@@ -49,7 +49,7 @@
           
           <van-field
             v-model="form.password"
-            placeholder="请输入密码（6-20位）"
+            placeholder="6-32 位字母数字下划线"
             :rules="passwordRules"
             required
             type="password"
@@ -92,6 +92,12 @@ import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { useUserStore } from '../store/user';
+import {
+  USERNAME_PATTERN,
+  PASSWORD_PATTERN,
+  USERNAME_RULE_MESSAGE,
+  PASSWORD_RULE_MESSAGE
+} from '../utils/credentialRules';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -107,7 +113,8 @@ const form = reactive({
 });
 
 const usernameRules = [
-  { required: true, message: '请输入用户名' }
+  { required: true, message: '请输入用户名' },
+  { pattern: USERNAME_PATTERN, message: USERNAME_RULE_MESSAGE }
 ];
 
 const emailRules = [
@@ -117,7 +124,7 @@ const emailRules = [
 
 const passwordRules = [
   { required: true, message: '请输入密码' },
-  { pattern: /^.{6,20}$/, message: '密码长度应为6-20位' }
+  { pattern: PASSWORD_PATTERN, message: PASSWORD_RULE_MESSAGE }
 ];
 
 const confirmPasswordRules = [
@@ -127,6 +134,10 @@ const confirmPasswordRules = [
 const validateUsername = () => {
   if (!form.username) {
     showToast('请输入用户名');
+    return false;
+  }
+  if (!USERNAME_PATTERN.test(form.username)) {
+    showToast(USERNAME_RULE_MESSAGE);
     return false;
   }
   return true;
@@ -150,8 +161,8 @@ const validatePassword = () => {
     showToast('请输入密码');
     return false;
   }
-  if (form.password.length < 6 || form.password.length > 20) {
-    showToast('密码长度应为6-20位');
+  if (!PASSWORD_PATTERN.test(form.password)) {
+    showToast(PASSWORD_RULE_MESSAGE);
     return false;
   }
   return true;

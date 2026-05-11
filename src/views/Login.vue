@@ -1,48 +1,48 @@
 <template>
   <div class="login-page">
     <van-nav-bar
-      title="用户登录"
-      left-arrow
-      @click-left="onClickLeft"
-      fixed
+        title="用户登录"
+        left-arrow
+        @click-left="onClickLeft"
+        fixed
     />
-    
+
     <div class="login-container">
       <div class="login-logo">
         <van-image
-          width="80"
-          height="80"
-          src="https://fastly.jsdelivr.net/npm/@vant/assets/cat.jpeg"
-          round
+            width="80"
+            height="80"
+            src="https://fastly.jsdelivr.net/npm/@vant/assets/cat.jpeg"
+            round
         />
         <h2>用户登录</h2>
       </div>
-      
+
       <van-form @submit="onSubmit" class="login-form">
         <van-cell-group inset>
           <van-field
-            v-model="username"
-            name="username"
-            label="用户名"
-            placeholder="请输入用户名"
-            :rules="[{ required: true, message: '请填写用户名' }]"
+              v-model="username"
+              name="username"
+              label="用户名"
+              placeholder="3-20 位字母数字下划线"
+              :rules="usernameRules"
           />
           <van-field
-            v-model="password"
-            type="password"
-            name="password"
-            label="密码"
-            placeholder="请输入密码"
-            :rules="[{ required: true, message: '请填写密码' }]"
+              v-model="password"
+              type="password"
+              name="password"
+              label="密码"
+              placeholder="6-32 位字母数字下划线"
+              :rules="passwordRules"
           />
         </van-cell-group>
-        
+
         <div class="submit-btn">
           <van-button round block type="primary" native-type="submit" size="large">
             登录
           </van-button>
         </div>
-        
+
         <div class="register-link">
           还没有账号？<span @click="goToRegister">去注册</span>
         </div>
@@ -56,6 +56,12 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { useUserStore } from '../store/user';
+import {
+  USERNAME_PATTERN,
+  PASSWORD_PATTERN,
+  USERNAME_RULE_MESSAGE,
+  PASSWORD_RULE_MESSAGE
+} from '../utils/credentialRules';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -63,40 +69,34 @@ const userStore = useUserStore();
 const username = ref('');
 const password = ref('');
 
+const usernameRules = [
+  { required: true, message: '请填写用户名' },
+  { pattern: USERNAME_PATTERN, message: USERNAME_RULE_MESSAGE }
+];
+const passwordRules = [
+  { required: true, message: '请填写密码' },
+  { pattern: PASSWORD_PATTERN, message: PASSWORD_RULE_MESSAGE }
+];
+
 const onSubmit = async (values) => {
-  // 显示加载提示
-  showToast({
-    type: 'loading',
-    message: '登录中...',
-    forbidClick: true,
-    duration: 0
-  });
-  
   try {
-    // 调用API登录
+    // 1. 登录
     const result = await userStore.login({
       username: username.value,
       password: password.value
     });
-    
+
     if (result.success) {
-      showToast({
-        type: 'success',
-        message: result.message
-      });
-      
+      // ✅ 只跳转，不调用 getUserInfoDetail()
+      // 这个方法会自动在首页/路由守卫里加载
       router.push('/');
+      showToast("登录成功");
     } else {
-      showToast({
-        type: 'fail',
-        message: result.message
-      });
+      showToast(result.message || "登录失败");
     }
   } catch (error) {
-    showToast({
-      type: 'fail',
-      message: '登录失败，请稍后再试'
-    });
+    console.error("登录异常", error);
+    showToast("登录失败");
   }
 };
 
@@ -140,17 +140,6 @@ const goToRegister = () => {
 
 .submit-btn {
   margin: 24px 16px;
-}
-
-.login-tips {
-  text-align: center;
-  color: #969799;
-  font-size: 14px;
-  margin-top: 16px;
-}
-
-.login-tips p {
-  margin: 8px 0;
 }
 
 .register-link {
