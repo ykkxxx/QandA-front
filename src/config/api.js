@@ -25,18 +25,25 @@ export const apiConfig = {
     // 文件上传
     uploadFile: '/file/upload/',
     
-    // AI对话相关
+    // AI对话相关（流式路径若与后端不一致，可在 .env 中设置 VITE_AGENT_QUERY_STREAM）
     agentQuery: '/api/agent/query',
-    agentQueryStream: '/api/agent/query/stream',
+    agentQueryStream:
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_AGENT_QUERY_STREAM) ||
+      '/api/agent/query/stream',
     
     // RAG相关
     ragQuery: '/api/rag/query',
     
-    // 会话管理
+    // 会话消息（MessageController：/api/message）
+    messageSend: '/api/message/send',
+    messageList: '/api/message/list/',
+
+    // 会话管理（与 Spring SessionController：/api/session 一致）
+    createSession: '/api/session',
     getSession: '/api/session/',
     deleteSession: '/api/session/',
-    getAllSessions: '/api/sessions',
-    getUserSessions: '/api/sessions',
+    getAllSessions: '/api/session/sessions',
+    getUserSessions: '/api/session/sessions',
     
     // 向量数据库
     uploadSingleFile: '/api/vector/add/single',

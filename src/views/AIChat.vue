@@ -61,19 +61,9 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/monokai-sublime.css';
 import 'highlight.js/lib/common';
-import { apiConfig } from '../config/api';
 import { useUserStore } from '../store/user';
 import { useSessionStore } from '../store/session';
-import { bearerAuthHeaders } from '../utils/authToken';
-
-// 从cookie中获取CSRF token
-const getCsrfToken = () => {
-  const cookieValue = document.cookie
-    .split('; ')
-    .find(row => row.startsWith('csrftoken='))
-    ?.split('=')[1];
-  return cookieValue || '';
-};
+import { postMessageSend } from '../api/chatMessages';
 
 // 聊天消息
 const messages = ref([
@@ -82,8 +72,7 @@ const messages = ref([
 const userInput = ref('');
 const messagesContainer = ref(null);
 const isLoading = ref(false);
-const sessionId = ref('');
-const hasJumped = ref(false);
+const session_id = ref('');
 
 const router = useRouter();
 const route = useRoute();
@@ -155,105 +144,20 @@ const sendMessage = async () => {
   }
 };
 
-// 获取AI响应（使用SSE）
+// 获取 AI 回复：POST /api/message/send
 const fetchAIResponse = async (userMessage) => {
-  try {
-    // 确保使用正确的相对路径，通过Vite代理访问
-    const url = '/api/agent/query/stream';
-    // 从localStorage获取token
-    const token = localStorage.getItem('jwt_token') || userStore.token;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...bearerAuthHeaders(token)
-      },
-      body: JSON.stringify({
-        session_id: sessionId.value || undefined,
-        query: userMessage
-      })
-    });
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || `HTTP error! status: ${response.status}`);
-    }
-    
-    // 处理SSE流
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let aiResponse = '';
-  
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (!data) continue;
-        
-        try {
-          const json = JSON.parse(data);
-          
-          switch (json.type) {
-            case 'step':
-              break;
-            case 'response':
-              const content = json.content || '';
-              if (content) {
-                aiResponse += content;
-                
-                // 逐字符显示打字机效果
-                const displayContent = messages.value[messages.value.length - 1].content || '';
-                const remainingContent = aiResponse.substring(displayContent.length);
-                
-                for (const char of remainingContent) {
-                  messages.value[messages.value.length - 1].content += char;
-                  await nextTick();
-                  scrollToBottom();
-                  // 控制打字速度，每个字符延迟8ms
-                  await new Promise(resolve => setTimeout(resolve, 8));
-                }
-              }
-              // 保存会话ID（不立即跳转，避免中断SSE）
-              if (json.session_id && typeof json.session_id === 'string' && json.session_id.trim()) {
-                sessionId.value = json.session_id;
-              }
-              break;
-            case 'done':
-              // 保存会话ID并在所有数据接收完成后跳转
-              if (json.session_id && typeof json.session_id === 'string' && json.session_id.trim()) {
-                sessionId.value = json.session_id;
-                // 如果当前路由没有sessionId参数，跳转到带sessionId的路由
-                if (!route.params.sessionId) {
-                  router.push(`/aichat/${json.session_id}`);
-                }
-              }
-              break;
-            case 'error':
-              throw new Error(json.content || 'API错误');
-              break;
-          }
-        } catch (e) {
-          console.error('Error parsing SSE data:', e);
-        }
-      }
-    }
+  const sid = String(session_id.value || route.params.session_id || '').trim() || undefined;
+  const result = await postMessageSend(sid, userMessage);
+  if (!result.success) {
+    throw new Error(result.message || '发送失败');
   }
-  
-  // 如果没有收到任何内容
-  if (!aiResponse) {
-    messages.value[messages.value.length - 1].content = '抱歉，我无法生成回复。请检查API设置或稍后再试。';
-  }
-  } catch (error) {
-    console.error('Fetch error:', error);
-    throw error;
+  const text = (result.reply && String(result.reply).trim()) || '（无回复内容）';
+  messages.value[messages.value.length - 1].content = text;
+  if (result.session_id) {
+    session_id.value = result.session_id;
+    if (!route.params.session_id) {
+      router.replace(`/aichat/${result.session_id}`);
+    }
   }
 };
 
@@ -277,10 +181,10 @@ watch(messages, () => {
 }, { deep: true });
 
 // 监听路由参数变化，重新加载会话历史
-watch(() => route.params.sessionId, async (newSessionId) => {
-  if (newSessionId) {
+watch(() => route.params.session_id, async (new_session_id) => {
+  if (new_session_id) {
     try {
-      const result = await sessionStore.getSession(newSessionId);
+      const result = await sessionStore.getMessageList(new_session_id);
       if (result.success && sessionStore.currentSession) {
         loadSessionHistory(sessionStore.currentSession);
       } else {
@@ -295,13 +199,11 @@ watch(() => route.params.sessionId, async (newSessionId) => {
 
 // 组件挂载时检查是否有当前会话或路由参数中的会话ID
 onMounted(async () => {
-  // 检查路由参数中是否有sessionId
-  const routeSessionId = route.params.sessionId;
-  
-  if (routeSessionId) {
-    // 从路由参数获取会话ID，加载会话历史
+  const route_session_id = route.params.session_id;
+
+  if (route_session_id) {
     try {
-      const result = await sessionStore.getSession(routeSessionId);
+      const result = await sessionStore.getMessageList(route_session_id);
       if (result.success && sessionStore.currentSession) {
         loadSessionHistory(sessionStore.currentSession);
       } else {
@@ -319,18 +221,21 @@ onMounted(async () => {
   scrollToBottom();
 });
 
-// 加载会话历史
+// 加载会话历史：无历史时也要同步 session_id，否则后续发消息不会带上会话
 const loadSessionHistory = (session) => {
-  if (session.history && session.history.length > 0) {
-    // 清空当前消息
+  const rid = route.params.session_id;
+  const sid =
+    (session && (session.session_id ?? session.sessionId ?? session.id)) ?? rid ?? '';
+  if (sid) {
+    session_id.value = String(sid);
+  }
+
+  if (session?.history && session.history.length > 0) {
     messages.value = [];
-    // 加载历史消息
     session.history.forEach(([userMsg, aiMsg]) => {
       messages.value.push({ role: 'user', content: userMsg });
       messages.value.push({ role: 'assistant', content: aiMsg });
     });
-    // 设置会话ID
-    sessionId.value = session.session_id;
   }
 };
 </script>

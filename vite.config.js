@@ -6,6 +6,7 @@ const devProxy = {
   // AI 相关（不动）
   '/api/agent': { target: 'http://127.0.0.1:8123', changeOrigin: true, ws: true },
   '/api/rag': { target: 'http://127.0.0.1:8123', changeOrigin: true },
+  '/api/message': { target: 'http://127.0.0.1:8123', changeOrigin: true },
   '/api/session': { target: 'http://127.0.0.1:8123', changeOrigin: true },
   '/api/vector': { target: 'http://127.0.0.1:8123', changeOrigin: true },
   '/api/user': { target: 'http://127.0.0.1:8123', changeOrigin: true },

@@ -33,7 +33,7 @@ const routes = [
     }
   },
   {
-    path: '/aichat/:sessionId',
+    path: '/aichat/:session_id',
     name: 'AIChatWithSession',
     component: () => import('../views/AIChat.vue'),
     meta: {

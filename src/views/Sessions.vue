@@ -79,7 +79,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { showToast, Toast } from 'vant';
+import { showToast } from 'vant';
 import TabBar from '../components/TabBar.vue';
 import { useSessionStore } from '../store/session';
 import { useUserStore } from '../store/user';
@@ -99,40 +99,14 @@ watch(() => route.path, async (newPath) => {
   }
 });
 
-// 加载会话列表
+// 加载会话列表（后端从 JWT 识别用户，GET /api/session/sessions）
 const loadSessions = async () => {
-  // 检查是否登录
   if (!userStore.getLoginStatus) {
     showToast('请先登录');
     router.push('/login');
     return;
   }
-  
-  // 获取用户ID（假设从用户信息中获取）
-  if (!userStore.userInfo) {
-    const result = await userStore.getUserInfoDetail();
-    if (!result.success) {
-      showToast('获取用户信息失败');
-      return;
-    }
-  }
-  
-  if (userStore.userInfo) {
-
-    
-    // 尝试获取用户ID，支持不同的字段名
-    let userId = userStore.userInfo.uuid || userStore.userInfo.id || userStore.userInfo.user_id;
-    
-    if (userId) {
-      await sessionStore.getUserSessions(userId);
-    } else {
-      // 显示详细的错误信息
-      showToast('获取用户ID失败，请检查用户信息结构');
-      console.error('用户信息中没有找到ID字段:', userStore.userInfo);
-    }
-  } else {
-    showToast('获取用户信息失败');
-  }
+  await sessionStore.getUserSessions();
 };
 
 // 组件挂载时获取会话列表
@@ -173,10 +147,8 @@ const selectSession = (session) => {
 };
 
 // 删除会话
-const deleteSession = async (sessionId) => {
-
-  
-  const result = await sessionStore.deleteSession(sessionId);
+const deleteSession = async (session_id) => {
+  const result = await sessionStore.deleteSession(session_id);
   if (result.success) {
     showToast('会话删除成功');
   } else {
