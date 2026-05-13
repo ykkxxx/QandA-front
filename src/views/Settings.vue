@@ -12,6 +12,10 @@
         <van-cell :title="$t('settings.languageSettings')" is-link @click="showLanguagePopup = true" />
       </van-cell-group>
       
+      <van-cell-group inset title="管理后台">
+        <van-cell title="安全与黑名单" is-link label="需 X-Admin-Token，与用户登录无关" @click="goAdminSecurity" />
+      </van-cell-group>
+
       <van-cell-group inset :title="$t('settings.account')">
         <van-cell :title="$t('settings.privacySettings')" is-link />
         <van-cell :title="$t('settings.notificationSettings')" is-link />
@@ -88,6 +92,10 @@ const { t, locale } = useI18n();
 // 返回上一页
 const onClickLeft = () => {
   router.back();
+};
+
+const goAdminSecurity = () => {
+  router.push('/admin/security');
 };
 
 // 主题相关

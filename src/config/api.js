@@ -33,6 +33,8 @@ export const apiConfig = {
     
     // RAG相关
     ragQuery: '/api/rag/query',
+    ragContext: '/api/rag/context',
+    chatDocument: '/api/chat/document',
     
     // 会话消息（MessageController：/api/message）
     messageSend: '/api/message/send',

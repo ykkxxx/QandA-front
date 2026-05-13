@@ -39,6 +39,7 @@
     <div class="menu-list">
       <van-cell-group inset>
         <van-cell :title="$t('my.notifications')" is-link />
+        <van-cell v-if="isLogin" title="知识库 / RAG 预览" is-link @click="goKbRagDemo" />
         <van-cell :title="$t('my.settings')" is-link @click="goToSettings" />
         <van-cell v-if="isLogin" :title="$t('my.logout')" @click="handleLogout" />
       </van-cell-group>
@@ -95,6 +96,10 @@ const goToProfile = () => {
 // 跳转到设置页面
 const goToSettings = () => {
   router.push('/settings');
+};
+
+const goKbRagDemo = () => {
+  router.push('/kb-rag-demo');
 };
 
 // 退出登录

@@ -23,6 +23,8 @@ import {
   Image,
   Toast,
   Icon,
+  Uploader,
+  Pagination,
   Popup,
   Radio,
   RadioGroup
@@ -62,6 +64,8 @@ app.use(Field)
 app.use(Image)
 app.use(Toast)
 app.use(Icon)
+app.use(Uploader)
+app.use(Pagination)
 app.use(Popup)
 app.use(Radio)
 app.use(RadioGroup)

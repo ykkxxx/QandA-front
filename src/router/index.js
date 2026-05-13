@@ -77,6 +77,24 @@ const routes = [
       keepAlive: true
     }
   },
+  {
+    path: '/kb-rag-demo',
+    name: 'KbRagDemo',
+    component: () => import('../views/KbRagDemo.vue'),
+    meta: {
+      title: '知识库 / RAG',
+      keepAlive: false
+    }
+  },
+  {
+    path: '/admin/security',
+    name: 'AdminSecurity',
+    component: () => import('../views/AdminSecurityPage.vue'),
+    meta: {
+      title: '管理后台 - 安全与黑名单',
+      keepAlive: false
+    }
+  },
 ]
 
 const router = createRouter({
